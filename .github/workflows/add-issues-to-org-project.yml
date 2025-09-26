@@ -1,35 +1,46 @@
-name: Add issues to Org Project #6
+name: Reusable · Add issues to Org Project #6
 
 on:
-  issues:
-    types: [opened, reopened, labeled]  # add 'edited' if you want edits to trigger too
-
-permissions:
-  contents: read
-  issues: read
-  projects: write
+  workflow_call:
+    secrets:
+      ORG_PROJECT_TOKEN:
+        required: true
+    inputs:
+      org_login:
+        description: "Organization login"
+        type: string
+        required: true
+        default: graymatterresources
+      project_number:
+        description: "Org Project number"
+        type: number
+        required: true
+        default: 6
 
 jobs:
   add_to_project:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.ORG_PROJECT_TOKEN }}   # Org-level secret (see below)
-      ORG_LOGIN: graymatterresources
-      PROJECT_NUMBER: 6
+
     steps:
       - name: Resolve ProjectV2 ID
-        id: proj
+        env:
+          GH_TOKEN: ${{ secrets.ORG_PROJECT_TOKEN }}
+          ORG_LOGIN: ${{ inputs.org_login }}
+          PROJECT_NUMBER: ${{ inputs.project_number }}
         run: |
           PROJECT_ID=$(gh api graphql -f query='
             query($org: String!, $number: Int!) {
               organization(login: $org) {
                 projectV2(number: $number) { id }
               }
-            }' -f org="$ORG_LOGIN" -F number="$PROJECT_NUMBER" --jq '.data.organization.projectV2.id')
-          echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_OUTPUT
+            }' \
+            -f org="$ORG_LOGIN" -F number="$PROJECT_NUMBER" \
+            --jq '.data.organization.projectV2.id')
+          echo "PROJECT_ID=$PROJECT_ID" >> $GITHUB_ENV
 
       - name: Add issue to Project
-        if: ${{ github.event.issue.node_id != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.ORG_PROJECT_TOKEN }}
         run: |
           gh api graphql -f query='
             mutation($project: ID!, $item: ID!) {
@@ -37,5 +48,5 @@ jobs:
                 item { id }
               }
             }' \
-            -f project="${{ steps.proj.outputs.PROJECT_ID }}" \
+            -f project="${PROJECT_ID}" \
             -f item="${{ github.event.issue.node_id }}"
